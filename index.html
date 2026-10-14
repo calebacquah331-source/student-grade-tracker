@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Student Grade Tracker</title>
+<style>
+:root{--bg:#f4f7fb;--panel:#fff;--ink:#172033;--muted:#657089;--brand:#365cf5;--line:#e2e8f0;--good:#137a52;--bad:#b42318}
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:linear-gradient(135deg,#203fc4,#6380ff);color:#fff;padding:28px 18px}
+.wrap{width:min(1050px,100% - 28px);margin:auto}
+h1{margin:0;font-size:clamp(1.8rem,5vw,2.5rem)}
+header p{margin:8px 0 0;opacity:.92}
+main{padding:22px 0 40px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.stat,.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;box-shadow:0 8px 22px #18234a0b}
+.stat{padding:17px}
+.stat span{display:block;color:var(--muted);font-size:.85rem}
+.stat strong{display:block;margin-top:8px;font-size:1.7rem}
+.layout{display:grid;grid-template-columns:320px 1fr;gap:16px;margin-top:18px;align-items:start}
+.card{padding:20px}
+h2{font-size:1.15rem;margin:0 0 15px}
+label{display:block;font-size:.87rem;font-weight:700;margin:13px 0 6px}
+input,select{width:100%;border:1px solid #cbd5e1;border-radius:9px;padding:11px 12px;font:inherit;background:#fff;color:var(--ink)}
+input:focus,select:focus{outline:2px solid #b9c6ff;border-color:var(--brand)}
+button{border:0;border-radius:9px;padding:10px 13px;font-weight:700;font-size:.9rem;cursor:pointer}
+button:focus-visible{outline:3px solid #a5b4fc;outline-offset:2px}
+.primary{background:var(--brand);color:#fff;width:100%;margin-top:16px}
+.secondary{background:#edf1ff;color:#2545c7}
+.danger{background:#fff0ef;color:var(--bad)}
+.tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:13px}
+.tools input{flex:1 1 180px}
+.tools select{flex:0 1 175px}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:540px}
+th,td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--line);font-size:.9rem}
+th{color:var(--muted);font-size:.78rem;text-transform:uppercase;letter-spacing:.4px}
+.grade{display:inline-block;background:#e7f8ef;color:var(--good);padding:4px 8px;border-radius:20px;font-weight:700}
+.empty{text-align:center;padding:28px 10px;color:var(--muted)}
+.message{min-height:20px;margin-top:10px;font-size:.87rem;color:var(--bad)}
+@media(max-width:760px){.layout{grid-template-columns:1fr}.stat{padding:13px}.stat strong{font-size:1.4rem}}
+@media(max-width:390px){.stats{grid-template-columns:1fr}.stat{display:flex;align-items:center;justify-content:space-between}.stat strong{margin:0}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Student Grade Tracker</h1>
+    <p>Add students, manage scores, and view class performance.</p>
+  </div>
+</header>
+<main class="wrap">
+  <section class="stats" aria-label="Class summary">
+    <div class="stat"><span>Students recorded</span><strong id="total">0</strong></div>
+    <div class="stat"><span>Class average</span><strong id="average">—</strong></div>
+    <div class="stat"><span>Highest score</span><strong id="highest">—</strong></div>
+  </section>
+  <div class="layout">
+    <section class="card">
+      <h2 id="formTitle">Add a student</h2>
+      <form id="studentForm">
+        <label for="studentName">Student name</label>
+        <input id="studentName" placeholder="Enter student name" maxlength="70" required>
+        <label for="studentId">Student ID</label>
+        <input id="studentId" placeholder="e.g. STU001" maxlength="20" required>
+        <label for="score">Score (0–100)</label>
+        <input id="score" type="number" min="0" max="100" step="0.1" placeholder="Enter score" required>
+        <button class="primary" type="submit" id="submitBtn">Add student</button>
+        <button class="secondary" type="button" id="cancelEdit" style="display:none;width:100%;margin-top:8px">Cancel edit</button>
+        <div class="message" id="message" role="status" aria-live="polite"></div>
+      </form>
+    </section>
+    <section class="card">
+      <h2>Student records</h2>
+      <div class="tools">
+        <input id="search" type="search" placeholder="Search name or student ID" aria-label="Search students">
+        <select id="sort" aria-label="Sort records">
+          <option value="name">Sort: Name (A–Z)</option>
+          <option value="scoreDesc">Score: High to low</option>
+          <option value="scoreAsc">Score: Low to high</option>
+          <option value="id">Student ID</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Student ID</th><th>Score</th><th>Grade</th><th>Actions</th></tr></thead>
+          <tbody id="studentRows"></tbody>
+        </table>
+        <div class="empty" id="emptyState">No students yet. Add a student using the form.</div>
+      </div>
+      <div class="tools" style="margin-top:16px">
+        <button class="secondary" type="button" id="demoBtn">Load demo data</button>
+        <button class="danger" type="button" id="clearBtn">Clear all records</button>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+let students=[];
+let editingId=null;
+const STORAGE_KEY="studentGradeTracker_v1";
+const $=id=>document.getElementById(id);
+
+function gradeFor(score){
+  if(score>=80)return "A";
+  if(score>=70)return "B";
+  if(score>=60)return "C";
+  if(score>=50)return "D";
+  return "F";
+}
+function save(){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify(students));}
+  catch(error){console.warn("Could not save records in this browser.",error);}
+}
+function load(){
+  try{
+    const stored=JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]");
+    if(Array.isArray(stored))students=stored.filter(s=>s&&typeof s.name==="string"&&typeof s.id==="string"&&Number.isFinite(Number(s.score))&&Number(s.score)>=0&&Number(s.score)<=100).map(s=>({name:s.name,id:s.id,score:Number(s.score)}));
+  }catch(error){students=[];}
+}
+function showMessage(text,isError=true){
+  $("message").textContent=text;
+  $("message").style.color=isError?"var(--bad)":"var(--good)";
+}
+function render(){
+  const term=$("search").value.trim().toLowerCase();
+  const sortBy=$("sort").value;
+  let visible=students.filter(s=>s.name.toLowerCase().includes(term)||s.id.toLowerCase().includes(term));
+  visible.sort((a,b)=>{
+    if(sortBy==="scoreDesc")return b.score-a.score;
+    if(sortBy==="scoreAsc")return a.score-b.score;
+    if(sortBy==="id")return a.id.localeCompare(b.id);
+    return a.name.localeCompare(b.name);
+  });
+  $("studentRows").replaceChildren();
+  $("emptyState").style.display=visible.length?"none":"block";
+  $("emptyState").textContent=students.length&&!visible.length?"No records match your search.":"No students yet. Add a student using the form.";
+  visible.forEach(student=>{
+    const tr=document.createElement("tr");
+    const name=document.createElement("td");name.textContent=student.name;
+    const id=document.createElement("td");id.textContent=student.id;
+    const score=document.createElement("td");score.textContent=student.score.toFixed(1).replace(/\.0$/,"")+"%";
+    const gradeCell=document.createElement("td");
+    const badge=document.createElement("span");badge.className="grade";badge.textContent=gradeFor(student.score);gradeCell.appendChild(badge);
+    const actions=document.createElement("td");
+    const edit=document.createElement("button");edit.className="secondary";edit.textContent="Edit";edit.addEventListener("click",()=>startEdit(student.id));
+    const del=document.createElement("button");del.className="danger";del.textContent="Delete";del.style.marginLeft="5px";del.addEventListener("click",()=>removeStudent(student.id));
+    actions.append(edit,del);tr.append(name,id,score,gradeCell,actions);$("studentRows").appendChild(tr);
+  });
+  $("total").textContent=students.length;
+  $("average").textContent=students.length?(students.reduce((sum,s)=>sum+s.score,0)/students.length).toFixed(1)+"%":"—";
+  $("highest").textContent=students.length?Math.max(...students.map(s=>s.score)).toFixed(1).replace(/\.0$/,"")+"%":"—";
+}
+function resetForm(){
+  editingId=null;$("studentForm").reset();$("formTitle").textContent="Add a student";$("submitBtn").textContent="Add student";$("cancelEdit").style.display="none";
+}
+function startEdit(id){
+  const student=students.find(s=>s.id===id);if(!student)return;
+  editingId=id;$("studentName").value=student.name;$("studentId").value=student.id;$("score").value=student.score;
+  $("formTitle").textContent="Edit student";$("submitBtn").textContent="Save changes";$("cancelEdit").style.display="block";$("studentName").focus();showMessage("");
+}
+function removeStudent(id){
+  const student=students.find(s=>s.id===id);
+  if(!student||!confirm("Delete "+student.name+"'s record?"))return;
+  students=students.filter(s=>s.id!==id);if(editingId===id)resetForm();save();render();showMessage("Student record deleted.",false);
+}
+$("studentForm").addEventListener("submit",event=>{
+  event.preventDefault();
+  const name=$("studentName").value.trim(),id=$("studentId").value.trim(),score=Number($("score").value);
+  if(!name||!id||$("score").value===""||!Number.isFinite(score)||score<0||score>100){showMessage("Enter a name, student ID, and a score from 0 to 100.");return;}
+  if(students.some(s=>s.id.toLowerCase()===id.toLowerCase()&&s.id!==editingId)){showMessage("That student ID already exists. Use a unique ID.");return;}
+  if(editingId){
+    const index=students.findIndex(s=>s.id===editingId);
+    if(index!==-1)students[index]={name,id,score};
+    showMessage("Student record updated.",false);
+  }else{students.push({name,id,score});showMessage("Student added successfully.",false);}
+  resetForm();save();render();
+});
+$("cancelEdit").addEventListener("click",()=>{resetForm();showMessage("");});
+$("search").addEventListener("input",render);
+$("sort").addEventListener("change",render);
+$("clearBtn").addEventListener("click",()=>{
+  if(!students.length){showMessage("There are no records to clear.");return;}
+  if(confirm("Delete every student record? This cannot be undone.")){students=[];resetForm();save();render();showMessage("All records cleared.",false);}
+});
+$("demoBtn").addEventListener("click",()=>{
+  const demo=[{name:"Ama Mensah",id:"STU001",score:86},{name:"Kojo Boateng",id:"STU002",score:73},{name:"Abena Owusu",id:"STU003",score:92},{name:"Yaw Asare",id:"STU004",score:58}];
+  const existing=new Set(students.map(s=>s.id.toLowerCase()));
+  demo.forEach(s=>{if(!existing.has(s.id.toLowerCase()))students.push(s);});
+  save();render();showMessage("Demo records loaded.",false);
+});
+load();render();
+</script>
+
+<section class="assignment wrap" aria-labelledby="assignment-title">
+  <div class="assignment-card">
+    <p class="assignment-kicker">Project report</p>
+    <h2 id="assignment-title">Real-World Applications of Arrays</h2>
+    <h3>1. Introduction</h3>
+    <p>An array is a data structure that stores a collection of related values under one variable name. Each element can be accessed by its position, called an index. Arrays help programs organise, access, and process multiple items.</p>
+    <h3>2. Real-world applications of arrays</h3>
+    <ul>
+      <li><strong>Student management:</strong> Store student names, IDs, marks, and grades to search results and calculate averages.</li>
+      <li><strong>Banking:</strong> Keep transaction lists so users can review and search transaction histories.</li>
+      <li><strong>Online shopping:</strong> Store shopping-cart products to add or remove items and calculate totals.</li>
+      <li><strong>Hospital management:</strong> Organise patient details, appointments, and waiting lists.</li>
+      <li><strong>Inventory management:</strong> Store products, prices, and quantities to monitor stock.</li>
+      <li><strong>Weather forecasting:</strong> Store temperature or rainfall readings to calculate averages and identify trends.</li>
+      <li><strong>Transport booking:</strong> Manage passenger lists, reservations, and seat availability.</li>
+      <li><strong>Social media:</strong> Organise posts, comments, and notifications for display and processing.</li>
+    </ul>
+    <h3>3. Why arrays are necessary</h3>
+    <ul>
+      <li><strong>Organisation:</strong> Keep related information together in one collection.</li>
+      <li><strong>Access:</strong> Retrieve elements by index and search records using identifying values.</li>
+      <li><strong>Processing:</strong> Process many records to calculate totals, averages, and maximum values.</li>
+      <li><strong>Searching and sorting:</strong> Find matching records and arrange them in a useful order.</li>
+      <li><strong>Flexible size:</strong> JavaScript arrays can grow or shrink as records are added or removed.</li>
+    </ul>
+    <h3>4. Developed application: Student Grade Tracker</h3>
+    <p>This application stores student records containing a name, student ID, and score. Users can add, edit, search, sort, and delete records. It calculates the number of students, class average, highest score, and a letter grade for each score.</p>
+    <p>Example of a student record in JavaScript:</p>
+    <pre><code>let students = [];
+
+students.push({
+  name: "Ama Mensah",
+  id: "STU001",
+  score: 86
+});</code></pre>
+    <h3>5. How the application uses arrays</h3>
+    <ul>
+      <li><code>push()</code> adds a student record.</li>
+      <li><code>find()</code> locates a record for editing or deletion.</li>
+      <li><code>filter()</code> finds matching records and removes selected records from the collection.</li>
+      <li><code>sort()</code> arranges records by name, ID, or score.</li>
+      <li><code>reduce()</code> adds scores to calculate the class average.</li>
+      <li><code>map()</code> processes scores to help determine the highest result.</li>
+    </ul>
+    <h3>6. Conclusion</h3>
+    <p>Arrays are important because they help applications store and process many related values in an organised way. The Student Grade Tracker demonstrates this by managing student records, searching and sorting results, and calculating class statistics. The entire project is contained in one <code>index.html</code> file with HTML, CSS, and JavaScript.</p>
+    <p class="assignment-note"><strong>Note:</strong> Records are saved in the current browser on the current device. They are not automatically shared with other users or devices.</p>
+  </div>
+</section>
+<style>
+.assignment{padding:0 0 36px}
+.assignment-card{background:#fff;border:1px solid #e2e8f0;border-radius:15px;padding:clamp(18px,4vw,30px);box-shadow:0 8px 22px #18234a0b;line-height:1.7}
+.assignment-kicker{text-transform:uppercase;letter-spacing:1.3px;font-size:.76rem;font-weight:700;color:#365cf5;margin:0 0 6px}
+.assignment-card h2{font-size:1.55rem;line-height:1.25;margin:0 0 20px}
+.assignment-card h3{font-size:1.05rem;margin:22px 0 7px}
+.assignment-card p,.assignment-card li{color:#46516a}
+.assignment-card ul{padding-left:22px}
+.assignment-card li{margin:7px 0}
+.assignment-card pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f1f4fb;padding:14px;border-radius:9px;overflow-x:auto}
+.assignment-card pre code{background:transparent;color:#243fb4;padding:0}
+.assignment-note{border-left:3px solid #365cf5;padding-left:12px;font-size:.9rem}
+</style>
+
+</body>
+</html>
